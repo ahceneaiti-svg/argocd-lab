@@ -1,0 +1,44 @@
+# Valeurs Helm adaptées à un lab minikube (ressources réduites, pas de HA).
+# Chart: argo/argo-cd (https://github.com/argoproj/argo-helm)
+
+redis-ha:
+  enabled: false
+
+controller:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+repoServer:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+server:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  service:
+    type: ClusterIP
+
+applicationSet:
+  replicas: 1
+
+configs:
+  params:
+    server.insecure: false

@@ -1,0 +1,90 @@
+# App-of-apps : le chart Helm "apps/" du repo argocd-example-apps déploie
+# une Application ArgoCD enfant par exemple du dépôt.
+#
+# Le values.yaml par défaut du chart a un bug : plusieurs entrées de la
+# liste `applications` n'ont pas de clé `destination`, ce qui fait planter
+# le template (`nil pointer evaluating interface {}.namespace`). On
+# réécrit donc la liste ici en fixant `destination.namespace` pour chaque
+# app. On omet volontairement :
+#   - plugin-* : nécessitent un sidecar config-management-plugin non
+#     configuré dans ce lab (helm/values.yaml)
+#   - app-any-ns* (lightweight/*) : nécessitent des AppProjects dédiés
+#     (team-frontend/team-backend/team-platform) non créés ici
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: example-apps
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: apps
+    helm:
+      values: |
+        config:
+          spec:
+            destination:
+              server: https://kubernetes.default.svc
+            source:
+              repoURL: https://github.com/argoproj/argocd-example-apps
+              targetRevision: master
+
+        applications:
+          - name: applicationset
+            destination:
+              namespace: argocd
+          - name: blue-green
+            destination:
+              namespace: blue-green
+            tool:
+              helm:
+                releaseName: blue-green
+          - name: guestbook
+            destination:
+              namespace: guestbook
+          - name: helm-dependency
+            destination:
+              namespace: helm-dependency
+            tool:
+              helm:
+                releaseName: helm-dependency
+          - name: helm-guestbook
+            destination:
+              namespace: helm-guestbook
+            tool:
+              helm:
+                releaseName: helm-guestbook
+          - name: helm-hooks
+            destination:
+              namespace: helm-hooks
+          - name: jsonnet-guestbook
+            destination:
+              namespace: jsonnet-guestbook
+          - name: jsonnet-guestbook-tla
+            destination:
+              namespace: jsonnet-guestbook-tla
+          - name: kustomize-guestbook
+            destination:
+              namespace: kustomize-guestbook
+          - name: pre-post-sync
+            destination:
+              namespace: pre-post-sync
+          - name: sock-shop
+            destination:
+              namespace: sock-shop
+          - name: sync-waves
+            destination:
+              namespace: sync-waves
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
