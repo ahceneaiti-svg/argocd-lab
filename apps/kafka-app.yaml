@@ -1,0 +1,43 @@
+# Déploie https://github.com/ahceneaiti-svg/kafka-app sur ce lab.
+#
+# Le dépôt fournit un overlay kustomize prêt à l'emploi dans k8s/ (images
+# publiques Docker Hub, aucun build). Deux ajustements pour ce lab :
+#   - user-service expose un Service NodePort 30080, or ce port est déjà pris
+#     par argocd-server (helm/values.yaml, nodePortHttps 30080). Le patch
+#     kustomize ci-dessous le repasse en ClusterIP -> accès via port-forward.
+#   - kafka-ui (NodePort 30808) et mailhog-ui (NodePort 30825) restent en
+#     NodePort mais ne sont pas mappés vers l'hôte par kind/cluster.yaml :
+#     y accéder aussi par kubectl port-forward.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kafka-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ahceneaiti-svg/kafka-app.git
+    targetRevision: main
+    path: k8s
+    kustomize:
+      patches:
+        - target:
+            kind: Service
+            name: user-service
+          patch: |
+            - op: replace
+              path: /spec/type
+              value: ClusterIP
+            - op: remove
+              path: /spec/ports/0/nodePort
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: user-platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
