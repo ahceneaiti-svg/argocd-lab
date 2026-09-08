@@ -1,0 +1,15 @@
+# Config kind pour le lab ArgoCD (utilisée par scripts/00-setup-kind.sh).
+# Cluster mono-noeud, ressources minimales.
+#
+# extraPortMappings : expose le hostPort 8080 vers le nodePort 30080.
+# Utile seulement si on bascule server.service.type sur NodePort dans
+# helm/values.yaml (avec nodePort: 30080). Par défaut le lab utilise
+# scripts/03-port-forward.sh, ce mapping reste inerte.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8080
+        protocol: TCP

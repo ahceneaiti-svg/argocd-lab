@@ -1,4 +1,4 @@
-# Valeurs Helm adaptées à un lab minikube (ressources réduites, pas de HA).
+# Valeurs Helm adaptées à un lab kind (ressources réduites, pas de HA).
 # Chart: argo/argo-cd (https://github.com/argoproj/argo-helm)
 
 redis-ha:

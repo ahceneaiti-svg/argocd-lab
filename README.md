@@ -1,10 +1,11 @@
-# Lab ArgoCD sur Minikube
+# Lab ArgoCD sur kind
 
-Lab local pour apprendre ArgoCD : cluster Minikube + ArgoCD installé via Helm + une Application d'exemple (GitOps).
+Lab local pour apprendre ArgoCD : cluster [kind](https://kind.sigs.k8s.io/) + ArgoCD installé via Helm + une Application d'exemple (GitOps).
 
 ## Prérequis
 
-- `minikube`
+- `kind`
+- `docker` (runtime des noeuds kind)
 - `kubectl`
 - `helm`
 - `argocd` CLI (optionnel, pour login en ligne de commande)
@@ -14,12 +15,14 @@ Lab local pour apprendre ArgoCD : cluster Minikube + ArgoCD installé via Helm +
 ```
 .
 ├── scripts/
-│   ├── 00-setup-minikube.sh      # démarre le cluster minikube
+│   ├── 00-setup-kind.sh          # crée (ou réutilise) le cluster kind
 │   ├── 01-install-argocd.sh      # installe ArgoCD via Helm dans le namespace argocd
 │   ├── 02-get-admin-password.sh  # récupère le mot de passe admin initial
 │   └── 03-port-forward.sh        # expose l'UI ArgoCD sur https://localhost:8080
+├── kind/
+│   └── cluster.yaml              # config kind mono-noeud du lab
 ├── helm/
-│   └── values.yaml               # valeurs Helm adaptées à un lab minikube
+│   └── values.yaml               # valeurs Helm adaptées à un lab kind
 └── apps/
     └── example-apps-of-apps.yaml  # app-of-apps : déploie tous les exemples de argocd-example-apps
 ```
@@ -27,13 +30,19 @@ Lab local pour apprendre ArgoCD : cluster Minikube + ArgoCD installé via Helm +
 ## Démarrage rapide
 
 ```bash
-./scripts/00-setup-minikube.sh
+./scripts/00-setup-kind.sh
 ./scripts/01-install-argocd.sh
 ./scripts/02-get-admin-password.sh
 ./scripts/03-port-forward.sh
 ```
 
 Puis ouvrir https://localhost:8080 (accepter le certificat auto-signé), login `admin` / mot de passe affiché.
+
+Overrides via variables d'environnement : `KIND_CLUSTER_NAME` (défaut `argocd-lab`),
+`KIND_NODE_IMAGE` (image des noeuds, ex. `kindest/node:v1.31.0`), `KIND_CONFIG` (chemin du
+fichier de config kind), `ARGOCD_NAMESPACE`, `ARGOCD_RELEASE`, `ARGOCD_LOCAL_PORT`.
+
+Le contexte kubectl créé par kind s'appelle `kind-<KIND_CLUSTER_NAME>` (ex. `kind-argocd-lab`).
 
 ## Déployer toutes les applications d'exemple
 
@@ -62,12 +71,18 @@ Limitations connues sur ce lab single-cluster :
   `appset-progressive-*` restent `Missing` car elles ciblent des environnements multi-cluster qui n'existent
   pas dans ce lab.
 - `example.helm-hooks` / `example.sync-waves` peuvent rester `Missing` un moment : leurs Jobs de hook tirent
-  `alpine:latest` / `nginx:latest`, ce qui peut être lent la première fois sur minikube.
+  `alpine:latest` / `nginx:latest`, ce qui peut être lent au premier pull sur kind.
+
+## Accès à l'UI sans port-forward (optionnel)
+
+`kind/cluster.yaml` mappe le `hostPort` 8080 vers le `nodePort` 30080. Pour l'utiliser, basculer
+`server.service.type` sur `NodePort` (avec `nodePort: 30080`) dans `helm/values.yaml`, réinstaller,
+puis accéder à https://localhost:8080 directement. Par défaut le lab passe par `03-port-forward.sh`.
 
 ## Nettoyage
 
 ```bash
 helm uninstall argocd -n argocd
 kubectl delete namespace argocd
-minikube stop        # ou: minikube delete
+kind delete cluster --name argocd-lab   # ou la valeur de KIND_CLUSTER_NAME
 ```

@@ -9,7 +9,7 @@
 #   - plugin-* : nécessitent un sidecar config-management-plugin non
 #     configuré dans ce lab (helm/values.yaml)
 #   - app-any-ns* (lightweight/*) : nécessitent des AppProjects dédiés
-#     (team-frontend/team-backend/team-platform) non créés ici
+#     (team-frontend/team-backend/team-platform) non créés dans ce lab kind
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
