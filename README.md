@@ -18,9 +18,9 @@ Lab local pour apprendre ArgoCD : cluster [kind](https://kind.sigs.k8s.io/) + Ar
 │   ├── 00-setup-kind.sh          # crée (ou réutilise) le cluster kind
 │   ├── 01-install-argocd.sh      # installe ArgoCD via Helm dans le namespace argocd
 │   ├── 02-get-admin-password.sh  # récupère le mot de passe admin initial
-│   └── 03-port-forward.sh        # expose l'UI ArgoCD sur https://localhost:8080
+│   └── 03-port-forward.sh        # fallback : port-forward de l'UI si le NodePort n'est pas utilisable
 ├── kind/
-│   └── cluster.yaml              # config kind mono-noeud du lab
+│   └── cluster.yaml              # config kind mono-noeud : mappe hostPort 8080 -> nodePort 30080
 ├── helm/
 │   └── values.yaml               # valeurs Helm adaptées à un lab kind
 └── apps/
@@ -33,10 +33,18 @@ Lab local pour apprendre ArgoCD : cluster [kind](https://kind.sigs.k8s.io/) + Ar
 ./scripts/00-setup-kind.sh
 ./scripts/01-install-argocd.sh
 ./scripts/02-get-admin-password.sh
-./scripts/03-port-forward.sh
 ```
 
 Puis ouvrir https://localhost:8080 (accepter le certificat auto-signé), login `admin` / mot de passe affiché.
+
+L'UI est exposée directement : `helm/values.yaml` met `server.service` en `NodePort`
+(https sur `30080`), et `kind/cluster.yaml` mappe le `hostPort` 8080 du noeud vers ce
+`nodePort`. Aucun `port-forward` nécessaire. Si ce mapping n'est pas exploitable (port
+8080 déjà pris, config kind modifiée), utiliser le fallback :
+
+```bash
+./scripts/03-port-forward.sh
+```
 
 Overrides via variables d'environnement : `KIND_CLUSTER_NAME` (défaut `argocd-lab`),
 `KIND_NODE_IMAGE` (image des noeuds, ex. `kindest/node:v1.31.0`), `KIND_CONFIG` (chemin du
@@ -73,11 +81,15 @@ Limitations connues sur ce lab single-cluster :
 - `example.helm-hooks` / `example.sync-waves` peuvent rester `Missing` un moment : leurs Jobs de hook tirent
   `alpine:latest` / `nginx:latest`, ce qui peut être lent au premier pull sur kind.
 
-## Accès à l'UI sans port-forward (optionnel)
+## Accès à l'UI
 
-`kind/cluster.yaml` mappe le `hostPort` 8080 vers le `nodePort` 30080. Pour l'utiliser, basculer
-`server.service.type` sur `NodePort` (avec `nodePort: 30080`) dans `helm/values.yaml`, réinstaller,
-puis accéder à https://localhost:8080 directement. Par défaut le lab passe par `03-port-forward.sh`.
+| Chemin | Détail |
+| --- | --- |
+| NodePort (défaut) | `server.service.type: NodePort`, https sur `nodePort` 30080 ; `kind/cluster.yaml` mappe le `hostPort` 8080 dessus. `https://localhost:8080` directement après `01-install-argocd.sh`. |
+| port-forward (fallback) | `./scripts/03-port-forward.sh` fait `kubectl port-forward service/argocd-server 8080:443`. À utiliser si le `hostPort` 8080 est déjà occupé ou si `kind/cluster.yaml` a été modifié. |
+
+Le chart applique `nodePortHttp` au port http **et** `nodePortHttps` au port https ; `helm/values.yaml`
+fixe donc deux valeurs distinctes (`30081` / `30080`) pour éviter un `duplicate nodePort` au déploiement.
 
 ## Nettoyage
 

@@ -34,7 +34,13 @@ server:
       cpu: 300m
       memory: 256Mi
   service:
-    type: ClusterIP
+    # Exposé via le extraPortMappings de kind/cluster.yaml : hostPort 8080 -> nodePort 30080.
+    # Accès direct : https://localhost:8080 (sans port-forward).
+    type: NodePort
+    # Le chart applique nodePortHttp au port http ET nodePortHttps au port https ;
+    # il faut donc deux valeurs distinctes sous peine de "duplicate nodePort".
+    nodePortHttp: 30081
+    nodePortHttps: 30080
 
 applicationSet:
   replicas: 1

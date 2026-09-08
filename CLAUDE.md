@@ -14,8 +14,13 @@ Run in order from repo root:
 ./scripts/00-setup-kind.sh          # create/reuse the kind cluster (docker-backed nodes)
 ./scripts/01-install-argocd.sh      # helm repo add/update + helm upgrade --install into namespace argocd
 ./scripts/02-get-admin-password.sh  # print the initial admin password
-./scripts/03-port-forward.sh        # kubectl port-forward argocd-server -> https://localhost:8080
 ```
+
+The UI is reachable at `https://localhost:8080` straight after step 01: `helm/values.yaml` sets
+`server.service` to `NodePort` (https on nodePort `30080`) and `kind/cluster.yaml` maps the node's
+`hostPort` 8080 onto it — no port-forward. `./scripts/03-port-forward.sh` (`kubectl port-forward
+service/argocd-server 8080:443`) is only a fallback for when hostPort 8080 is taken or `kind/cluster.yaml`
+was changed.
 
 Deploy all example applications (app-of-apps: creates one child `Application` per example in `argoproj/argocd-example-apps`, e.g. `guestbook`, `helm-guestbook`, `kustomize-guestbook`, `sock-shop`, `blue-green`, `applicationset`, ...):
 
@@ -35,9 +40,9 @@ All scripts are idempotent (`kind create cluster` guarded by `kind get clusters`
 
 ## Structure
 
-- `scripts/` — numbered setup steps (00 cluster, 01 install, 02 credentials, 03 UI access), meant to run in sequence.
-- `kind/cluster.yaml` — single-node kind cluster config used by `00-setup-kind.sh` (auto-passed as `--config` when present). Maps host port 8080 to nodePort 30080 for an optional port-forward-free UI path.
-- `helm/values.yaml` — Helm overrides for the `argo-cd` chart, tuned for kind: HA disabled, single replica per component, reduced CPU/memory requests/limits, `server.insecure: false`.
+- `scripts/` — numbered setup steps (00 cluster, 01 install, 02 credentials; 03 is the port-forward fallback), meant to run in sequence.
+- `kind/cluster.yaml` — single-node kind cluster config used by `00-setup-kind.sh` (auto-passed as `--config` when present). `extraPortMappings` binds the node's hostPort 8080 to nodePort 30080 — this publishes on the docker host whether or not anything serves 30080, so it will shadow a `kubectl port-forward` bound to the same 8080.
+- `helm/values.yaml` — Helm overrides for the `argo-cd` chart, tuned for kind: HA disabled, single replica per component, reduced CPU/memory requests/limits, `server.insecure: false`. `server.service` is `NodePort` with `nodePortHttp: 30081` / `nodePortHttps: 30080` — two distinct values are required because the chart template stamps `nodePortHttp` on the http port and `nodePortHttps` on the https port, and equal values fail server-side apply with `duplicate nodePort`.
 - `apps/` — ArgoCD `Application` manifests (GitOps definitions), applied directly with `kubectl apply` after ArgoCD is up. `example-apps-of-apps.yaml` is the sole entry point; it overrides the upstream chart's `applications` values list inline (via `source.helm.values`) to work around a bug in that chart's default `values.yaml` (missing `destination` key causes a Helm template nil-pointer) and to omit examples that need infra this lab doesn't set up (config-management-plugin sidecars, multi-tenant `AppProject`s).
 
 ## Known limitations of the deployed example apps
