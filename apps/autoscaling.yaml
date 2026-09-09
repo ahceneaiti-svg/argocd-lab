@@ -1,0 +1,86 @@
+# Déploie https://github.com/ahceneaiti-svg/autoscaling sur ce lab.
+#
+# Le dépôt fournit un overlay kustomize prêt à l'emploi dans k8s/ (image
+# publique Docker Hub ahceneaiti/autoscaling-app, aucun build). Trois
+# ajustements pour ce lab :
+#   - le Service autoscaling-app expose un NodePort 30080, or ce port est déjà
+#     pris par argocd-server (helm/values.yaml, nodePortHttps 30080). Le patch
+#     kustomize ci-dessous le repasse en ClusterIP -> accès via port-forward.
+#   - servicemonitor.yaml (ServiceMonitor) : CRD monitoring.coreos.com fourni
+#     par kube-prometheus-stack, non installé ici -> retiré du build.
+#   - grafana-dashboard.yaml (ConfigMap dans le namespace monitoring, absent
+#     ici) -> retiré du build.
+#
+# Prérequis HPA : metrics-server. kind n'en fournit pas -> lancer
+# ./scripts/04-install-metrics-server.sh avant, sinon le HPA reste en
+# "<unknown>/50%" (API metrics.k8s.io absente).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: autoscaling
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    app.kubernetes.io/part-of: autoscaling-demo
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ahceneaiti-svg/autoscaling.git
+    targetRevision: main
+    path: k8s
+    kustomize:
+      patches:
+        - target:
+            kind: Service
+            name: autoscaling-app
+          patch: |
+            - op: replace
+              path: /spec/type
+              value: ClusterIP
+            - op: remove
+              path: /spec/ports/0/nodePort
+        - target:
+            kind: ServiceMonitor
+            name: autoscaling-app
+          patch: |
+            $patch: delete
+            apiVersion: monitoring.coreos.com/v1
+            kind: ServiceMonitor
+            metadata:
+              name: autoscaling-app
+              namespace: autoscaling
+        - target:
+            kind: ConfigMap
+            name: autoscaling-demo-dashboard
+          patch: |
+            $patch: delete
+            apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: autoscaling-demo-dashboard
+              namespace: monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: autoscaling
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+  # Le HPA fait varier .spec.replicas du Deployment : Argo ne doit pas le "corriger".
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: autoscaling-app
+      jsonPointers:
+        - /spec/replicas

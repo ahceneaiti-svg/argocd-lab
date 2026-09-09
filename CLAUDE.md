@@ -28,6 +28,15 @@ Deploy all example applications (app-of-apps: creates one child `Application` pe
 kubectl apply -f apps/example-apps-of-apps.yaml
 ```
 
+Optional — install `metrics-server` (only needed by `Application`s with a CPU-metric
+`HorizontalPodAutoscaler`, e.g. `apps/autoscaling.yaml`). kind ships no metrics
+pipeline, so without it the `metrics.k8s.io` API is absent and such HPAs sit at
+`<unknown>/50%`:
+
+```bash
+./scripts/04-install-metrics-server.sh   # kubectl apply upstream manifest + patch --kubelet-insecure-tls
+```
+
 Cleanup:
 
 ```bash
@@ -36,14 +45,14 @@ kubectl delete namespace argocd
 kind delete cluster --name argocd-lab   # or the value of KIND_CLUSTER_NAME
 ```
 
-All scripts are idempotent (`kind create cluster` guarded by `kind get clusters`, `helm upgrade --install`, `kubectl create ns --dry-run=client | kubectl apply`) — safe to re-run against an already-provisioned cluster. Scripts read overrides from env vars (`KIND_CLUSTER_NAME`, `KIND_NODE_IMAGE`, `KIND_CONFIG`, `ARGOCD_NAMESPACE`, `ARGOCD_RELEASE`, `ARGOCD_LOCAL_PORT`) rather than hardcoded flags. `00-setup-kind.sh` switches the kubectl context to `kind-<KIND_CLUSTER_NAME>`.
+All scripts are idempotent (`kind create cluster` guarded by `kind get clusters`, `helm upgrade --install`, `kubectl create ns --dry-run=client | kubectl apply`) — safe to re-run against an already-provisioned cluster. Scripts read overrides from env vars (`KIND_CLUSTER_NAME`, `KIND_NODE_IMAGE`, `KIND_CONFIG`, `ARGOCD_NAMESPACE`, `ARGOCD_RELEASE`, `ARGOCD_LOCAL_PORT`, `METRICS_SERVER_NAMESPACE`, `METRICS_SERVER_MANIFEST`) rather than hardcoded flags. `00-setup-kind.sh` switches the kubectl context to `kind-<KIND_CLUSTER_NAME>`.
 
 ## Structure
 
-- `scripts/` — numbered setup steps (00 cluster, 01 install, 02 credentials; 03 is the port-forward fallback), meant to run in sequence.
+- `scripts/` — numbered setup steps (00 cluster, 01 install, 02 credentials; 03 is the port-forward fallback; 04 installs `metrics-server`, optional, only for HPA apps), meant to run in sequence.
 - `kind/cluster.yaml` — single-node kind cluster config used by `00-setup-kind.sh` (auto-passed as `--config` when present). `extraPortMappings` binds the node's hostPort 8080 to nodePort 30080 — this publishes on the docker host whether or not anything serves 30080, so it will shadow a `kubectl port-forward` bound to the same 8080.
 - `helm/values.yaml` — Helm overrides for the `argo-cd` chart, tuned for kind: HA disabled, single replica per component, reduced CPU/memory requests/limits, `server.insecure: false`. `server.service` is `NodePort` with `nodePortHttp: 30081` / `nodePortHttps: 30080` — two distinct values are required because the chart template stamps `nodePortHttp` on the http port and `nodePortHttps` on the https port, and equal values fail server-side apply with `duplicate nodePort`.
-- `apps/` — ArgoCD `Application` manifests (GitOps definitions), applied directly with `kubectl apply` after ArgoCD is up. `example-apps-of-apps.yaml` is the sole entry point; it overrides the upstream chart's `applications` values list inline (via `source.helm.values`) to work around a bug in that chart's default `values.yaml` (missing `destination` key causes a Helm template nil-pointer) and to omit examples that need infra this lab doesn't set up (config-management-plugin sidecars, multi-tenant `AppProject`s).
+- `apps/` — ArgoCD `Application` manifests (GitOps definitions), applied directly with `kubectl apply` after ArgoCD is up. `example-apps-of-apps.yaml` is the entry point for the upstream examples; it overrides the upstream chart's `applications` values list inline (via `source.helm.values`) to work around a bug in that chart's default `values.yaml` (missing `destination` key causes a Helm template nil-pointer) and to omit examples that need infra this lab doesn't set up (config-management-plugin sidecars, multi-tenant `AppProject`s). `kafka-app.yaml` and `autoscaling.yaml` are standalone `Application`s pointing at separate third-party repos (`github.com/ahceneaiti-svg/*`), each carrying inline `kustomize.patches` to fit this lab (chiefly: rewrite their NodePort `30080` Services to `ClusterIP`, since `argocd-server` already holds that nodePort).
 
 ## Known limitations of the deployed example apps
 
@@ -54,6 +63,6 @@ All scripts are idempotent (`kind create cluster` guarded by `kind get clusters`
 ## Conventions when extending this lab
 
 - New Helm overrides go in `helm/values.yaml`, not as extra `--set` flags in the install script.
-- New example apps are added to the `applications:` list inside `apps/example-apps-of-apps.yaml`'s inline Helm values (name + explicit `destination.namespace`, matching the upstream chart's schema), not as standalone `Application` manifests.
+- New *upstream* example apps are added to the `applications:` list inside `apps/example-apps-of-apps.yaml`'s inline Helm values (name + explicit `destination.namespace`, matching the upstream chart's schema). A whole separate third-party repo instead gets its own standalone `apps/<name>.yaml` `Application` (see `kafka-app.yaml`, `autoscaling.yaml`): a header comment stating the lab-specific tweaks, and `kustomize.patches` / `helm` overrides rather than a forked copy of the repo's manifests.
 - New setup steps get a new numbered script in `scripts/`, sourcing the same env-var override convention as the existing ones.
 - kind cluster topology changes (extra nodes, port mappings, feature gates) go in `kind/cluster.yaml`, not as `kind create cluster` flags in the setup script.
